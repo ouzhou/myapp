@@ -10,20 +10,14 @@ A project created with FastAPI CLI.
 uv run fastapi dev
 ```
 
-Visit http://localhost:8000
+Visit http://localhost:8000/docs
 
-### Deploy to FastAPI Cloud
-
-Sign up and log in at https://fastapicloud.com, then deploy with:
-
-```bash
-uv run fastapi deploy
-```
+Health: `GET /api/v1/health`
 
 ## Project Structure
 
-- `main.py` - Your FastAPI application
-- `pyproject.toml` - Project dependencies
+- `app/main.py` - FastAPI 工厂与入口
+- `pyproject.toml` - 依赖与 `[tool.fastapi] entrypoint`
 
 ## Learn More
 
