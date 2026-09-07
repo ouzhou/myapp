@@ -82,10 +82,14 @@ def db_session(engine: Engine) -> Iterator[Session]:
 
 @pytest.fixture
 def client(db_session: Session) -> Iterator[TestClient]:
+    # 不要在这里抄一份 get_db 的 commit/rollback：commit 只归 get_db 所有，
+    # 测试的隔离由 db_session 外层事务回滚负责。
     def override_get_db() -> Iterator[Session]:
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(get_db, None)

@@ -117,7 +117,7 @@ myapp/
     deps.py                    # 全局 Depends：DbSession、CurrentUserDep
     core/                      # 与「项目/任务」无关的协议和工具
       config.py
-      exceptions.py            # AppError、错误码枚举、handler
+      exceptions.py            # AppError、业务码编码规则、通用码、handler
       response.py              # Envelope[T]、PageResult[T]
       middleware.py            # request_id、安全头、限流
       security.py              # JWT、密码；第 13 步才有内容
@@ -204,7 +204,7 @@ entrypoint = "app.main:app"
 | 文件 | 放什么 | 学习步骤 |
 |---|---|---|
 | `config.py` | 环境变量、Settings、prod 启动断言 | 0、15 |
-| `exceptions.py` | `AppError`、业务错误码枚举、handler、409 映射 | 4 |
+| `exceptions.py` | `AppError`、业务码编码规则、通用码枚举、handler、约束名注册表 | 4 |
 | `response.py` | `Envelope[T]`、`PageResult[T]`、分页参数依赖 | 4、5 |
 | `middleware.py` | request_id、安全头、限流 | 4、15 |
 | `context.py` | `CurrentUser` 的数据结构 + ContextVar | 6 |
@@ -213,6 +213,14 @@ entrypoint = "app.main:app"
 | `logging.py` | 结构化日志配置 | 14 |
 
 `security.py` 在第 13 步之前**不要提前建空文件**。
+
+业务码分两层，别让它变成一个所有模块都要来改一笔的 god enum：
+
+- `core/exceptions.py` 定**编码规则**（`http_status_of` / `biz_code_of` 互为逆运算）和 core 自己抛的通用码（校验 422、未知 500）
+- **模块专属码定义在该模块的 `service.py`**，例如 `ProjectCode.NOT_FOUND = 40401`（资源序号 01）
+- 唯一约束冲突的 409 文案由模块调 `register_constraint_error(约束名, 码, 文案)` 登记；core 不认识「项目名称」这种业务词
+
+判断标准还是那句：删掉 projects 模块，`core/exceptions.py` 应该照样编译得过。
 
 ### `app/db/`
 
@@ -260,7 +268,7 @@ api_router.include_router(projects.router)
 | `router.py` | 路径、入参、调 service、声明 `Envelope[...]` 返回类型 | schemas、service、deps | 写 SQL、`commit`、拼 Casbin 策略 |
 | `schemas.py` | Pydantic DTO：Create / Update / Read / Query | 无业务、无 ORM | 继承 SQLAlchemy model |
 | `models.py` | SQLAlchemy 表 | `db.base` 的 mixin | 被 router 直接返回 |
-| `service.py` | 业务规则、租户条件、事务、调审计/权限 | models、DbSession、CurrentUser | 解析 JWT、读原始 header、各自 `commit` |
+| `service.py` | 业务规则、租户条件、事务、本模块业务码、调审计/权限 | models、DbSession、CurrentUser | 解析 JWT、读原始 header、各自 `commit` |
 | `deps.py`（可选） | 本模块守卫，如「项目成员」 | 全局 deps | 变成第二个 service |
 
 没有 `repository.py` 也可以。查询先写在 service 里。等同一个表的查询出现三处以上、或租户条件开始复制，再抽 `repository.py`。不要为了「像 Nest」提前加一层空转发。
@@ -346,7 +354,8 @@ JWT（第 13 步）只改 `app/deps.py` 里 CurrentUser 的实现。上面这条
 |---|---|
 | 环境变量、开关、prod 启动断言 | `core/config.py` |
 | 成功/失败的 JSON 形状、分页壳 | `core/response.py` |
-| 业务错误类型、错误码、HTTP 映射 | `core/exceptions.py` |
+| `AppError`、业务码编码规则、通用码 | `core/exceptions.py` |
+| 某个模块专属的业务码和 409 文案 | 该模块的 `service.py` |
 | request_id / 安全头 / 限流 | `core/middleware.py` |
 | 当前用户长什么样 | `core/context.py` |
 | 解析 JWT / 读假 header | `app/deps.py` + `core/security.py` |

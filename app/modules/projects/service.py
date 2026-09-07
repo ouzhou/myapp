@@ -1,17 +1,32 @@
 from datetime import UTC, datetime
+from enum import IntEnum
 from uuid import UUID
 
-from fastapi import HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import AppError, register_constraint_error
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     ProjectCreate,
     ProjectQuery,
     ProjectRead,
     ProjectUpdate,
+)
+
+
+class ProjectCode(IntEnum):
+    """projects 的专属业务码。资源序号 01，编码规则见 core/exceptions.py。"""
+
+    NOT_FOUND = 40401
+    NAME_CONFLICT = 40901
+
+
+# 约束名跟 models.py 里 __table_args__ 的 Index 同名，改一处要改两处。
+register_constraint_error(
+    "uq_projects_name_active",
+    ProjectCode.NAME_CONFLICT,
+    "项目名称已存在",
 )
 
 
@@ -23,7 +38,7 @@ def _get_active(db: Session, project_id: UUID) -> Project:
         )
     ).first()
     if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(ProjectCode.NOT_FOUND, "项目不存在")
     return project
 
 
@@ -46,14 +61,7 @@ def create_project(db: Session, payload: ProjectCreate) -> ProjectRead:
         status=payload.status,
     )
     db.add(project)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="project name already exists",
-        ) from exc
+    db.flush()
     return ProjectRead.model_validate(project)
 
 
@@ -64,14 +72,7 @@ def update_project(
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(project, field, value)
-    try:
-        db.flush()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="project name already exists",
-        ) from exc
+    db.flush()
     return ProjectRead.model_validate(project)
 
 
