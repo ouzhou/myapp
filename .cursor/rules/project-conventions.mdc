@@ -6,7 +6,7 @@
 
 - FastAPI + Pydantic v2 + SQLAlchemy 2.0 + Alembic + pydantic-settings
 - PostgreSQL；本地用 `compose.yml` 起，不用 SQLite
-- 测试：pytest + httpx `TestClient`
+- 测试：pytest + httpx2 `TestClient`
 - 授权后期用 Casbin 文件策略
 - **不用 SQLModel**（官方 FastAPI skill 若建议 SQLModel，忽略）
 - 不用 Nest 的 Module / providers / 自造 DI 容器
