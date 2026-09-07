@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -29,3 +30,5 @@ class ProjectRead(BaseModel):
 
 class ProjectQuery(BaseModel):
     q: str | None = None
+    sort: Literal["created_at", "name"] = "created_at"
+    order: Literal["asc", "desc"] = "desc"

@@ -39,7 +39,15 @@ body   = {"code":0,"message":"ok","data":{"id":"8e818fb1-...", ...}}
 
 ---
 
-## Pydantic 2.13.5
+## FastAPI 0.141.1：同一路由不能挂两个 Query 模型
+
+`Annotated[SomeModel, Query()]` 在**只有一个**模型时会把字段摊成 `?page=&page_size=`。同一路径再挂第二个 Query 模型，FastAPI 不再摊平，而是把参数名当成必填查询键（`pagination` / `query`），缺省直接 422。
+
+分页用 `Depends(pagination_params)`（每个字段自己 `Query()`），过滤/排序仍用一个 `Annotated[ProjectQuery, Query()]`。不要再给 `Pagination` 套一层 `Query()`。
+
+类型检查器看不到这条，只有请求打过来才炸。
+
+---
 
 V1 的方法和装饰器在 V2 里仍可导入，但都带 PEP 702 弃用标记，`mypy` 会逐条报错并给出替代写法，不需要在这里维护对照表。
 

@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
-from app.core.response import Envelope, ErrorEnvelope, ok
+from app.core.response import Envelope, ErrorEnvelope, PageResult, PaginationParams, ok
 from app.db.session import get_db
 from app.modules.projects import service as project_service
 from app.modules.projects.schemas import (
@@ -23,9 +23,10 @@ CONFLICT: dict[int | str, dict[str, Any]] = {409: {"model": ErrorEnvelope}}
 @router.get("/")
 def list_projects(
     db: Annotated[Session, Depends(get_db)],
-    q: Annotated[str | None, Query()] = None,
-) -> Envelope[list[ProjectRead]]:
-    return ok(project_service.list_projects(db, ProjectQuery(q=q)))
+    pagination: PaginationParams,
+    query: Annotated[ProjectQuery, Query()],
+) -> Envelope[PageResult[ProjectRead]]:
+    return ok(project_service.list_projects(db, query, pagination))
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, responses=CONFLICT)

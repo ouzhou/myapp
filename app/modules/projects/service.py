@@ -2,10 +2,11 @@ from datetime import UTC, datetime
 from enum import IntEnum
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError, register_constraint_error
+from app.core.response import PageResult, Pagination
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     ProjectCreate,
@@ -42,12 +43,34 @@ def _get_active(db: Session, project_id: UUID) -> Project:
     return project
 
 
-def list_projects(db: Session, query: ProjectQuery) -> list[ProjectRead]:
-    stmt = select(Project).where(Project.deleted_at.is_(None))
-    if query.q is not None:
-        stmt = stmt.where(Project.name.ilike(f"%{query.q}%"))
-    stmt = stmt.order_by(Project.created_at.desc())
-    return [ProjectRead.model_validate(row) for row in db.scalars(stmt)]
+_SORT_COLUMNS = {
+    "created_at": Project.created_at,
+    "name": Project.name,
+}
+
+
+def list_projects(
+    db: Session, query: ProjectQuery, pagination: Pagination
+) -> PageResult[ProjectRead]:
+    conditions = [Project.deleted_at.is_(None)]
+    if query.q:
+        conditions.append(Project.name.ilike(f"%{query.q}%"))
+    column = _SORT_COLUMNS[query.sort]
+    order_by = column.asc() if query.order == "asc" else column.desc()
+    total = db.scalar(select(func.count()).select_from(Project).where(*conditions)) or 0
+    rows = db.scalars(
+        select(Project)
+        .where(*conditions)
+        .order_by(order_by)
+        .offset((pagination.page - 1) * pagination.page_size)
+        .limit(pagination.page_size)
+    )
+    return PageResult(
+        items=[ProjectRead.model_validate(row) for row in rows],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )
 
 
 def get_project(db: Session, project_id: UUID) -> ProjectRead:
