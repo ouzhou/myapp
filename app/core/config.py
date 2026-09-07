@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     app_name: str
     environment: Literal["local", "staging", "prod"]
     database_url: str
+    # None = 跟 environment 走：只有 local 开 header 假用户。显式 true/false 覆盖默认。
+    allow_header_auth: bool | None = None
+
+    @property
+    def header_auth_enabled(self) -> bool:
+        if self.allow_header_auth is not None:
+            return self.allow_header_auth
+        return self.environment == "local"
 
 
 @lru_cache

@@ -3,9 +3,9 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 
-def test_create_then_get(client: TestClient) -> None:
+def test_create_then_get(auth_client: TestClient) -> None:
     name = f"project-{uuid4()}"
-    created = client.post("/api/v1/projects/", json={"name": name})
+    created = auth_client.post("/api/v1/projects/", json={"name": name})
     assert created.status_code == 201
     envelope = created.json()
     assert envelope["code"] == 0
@@ -13,39 +13,39 @@ def test_create_then_get(client: TestClient) -> None:
     assert body["name"] == name
     project_id = body["id"]
 
-    fetched = client.get(f"/api/v1/projects/{project_id}")
+    fetched = auth_client.get(f"/api/v1/projects/{project_id}")
     assert fetched.status_code == 200
     assert fetched.json()["data"]["id"] == project_id
     assert fetched.json()["data"]["name"] == name
 
 
-def test_soft_delete_hides_from_list(client: TestClient) -> None:
+def test_soft_delete_hides_from_list(auth_client: TestClient) -> None:
     name = f"project-{uuid4()}"
-    created = client.post("/api/v1/projects/", json={"name": name})
+    created = auth_client.post("/api/v1/projects/", json={"name": name})
     assert created.status_code == 201
     project_id = created.json()["data"]["id"]
 
-    deleted = client.delete(f"/api/v1/projects/{project_id}")
+    deleted = auth_client.delete(f"/api/v1/projects/{project_id}")
     assert deleted.status_code == 204
 
-    listed = client.get("/api/v1/projects/")
+    listed = auth_client.get("/api/v1/projects/")
     assert listed.status_code == 200
     assert project_id not in [row["id"] for row in listed.json()["data"]["items"]]
 
-    fetched = client.get(f"/api/v1/projects/{project_id}")
+    fetched = auth_client.get(f"/api/v1/projects/{project_id}")
     assert fetched.status_code == 404
 
 
-def test_list_is_paginated(client: TestClient) -> None:
+def test_list_is_paginated(auth_client: TestClient) -> None:
     created_ids = []
     for _ in range(3):
-        created = client.post(
+        created = auth_client.post(
             "/api/v1/projects/", json={"name": f"project-{uuid4()}"}
         )
         assert created.status_code == 201
         created_ids.append(created.json()["data"]["id"])
 
-    page1 = client.get("/api/v1/projects/", params={"page": 1, "page_size": 2})
+    page1 = auth_client.get("/api/v1/projects/", params={"page": 1, "page_size": 2})
     assert page1.status_code == 200
     data = page1.json()["data"]
     assert set(data) == {"items", "total", "page", "page_size"}
@@ -55,17 +55,17 @@ def test_list_is_paginated(client: TestClient) -> None:
     assert len(data["items"]) == 2
     assert {row["id"] for row in data["items"]} <= set(created_ids)
 
-    page2 = client.get("/api/v1/projects/", params={"page": 2, "page_size": 2})
+    page2 = auth_client.get("/api/v1/projects/", params={"page": 2, "page_size": 2})
     assert page2.status_code == 200
     assert page2.json()["data"]["total"] == 3
     assert len(page2.json()["data"]["items"]) == 1
 
 
-def test_illegal_sort_is_422(client: TestClient) -> None:
-    response = client.get("/api/v1/projects/", params={"sort": "deleted_at"})
+def test_illegal_sort_is_422(auth_client: TestClient) -> None:
+    response = auth_client.get("/api/v1/projects/", params={"sort": "deleted_at"})
     assert response.status_code == 422
 
 
-def test_page_size_over_limit_is_422(client: TestClient) -> None:
-    response = client.get("/api/v1/projects/", params={"page_size": 101})
+def test_page_size_over_limit_is_422(auth_client: TestClient) -> None:
+    response = auth_client.get("/api/v1/projects/", params={"page_size": 101})
     assert response.status_code == 422

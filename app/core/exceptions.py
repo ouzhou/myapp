@@ -43,6 +43,7 @@ def biz_code_of(http_status: int) -> int:
 class BizCode(IntEnum):
     """core 自己抛的通用码。模块专属码定义在各自模块里，编码规则同上。"""
 
+    UNAUTHORIZED = 40100
     VALIDATION_ERROR = 42200
     INTERNAL_ERROR = 50000
 

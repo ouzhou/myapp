@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -80,6 +81,19 @@ def db_session(engine: Engine) -> Iterator[Session]:
         connection.close()
 
 
+def auth_headers(
+    *,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    roles: str = "admin",
+) -> dict[str, str]:
+    return {
+        "X-User-Id": str(user_id or uuid4()),
+        "X-Tenant-Id": str(tenant_id or uuid4()),
+        "X-Roles": roles,
+    }
+
+
 @pytest.fixture
 def client(db_session: Session) -> Iterator[TestClient]:
     # 不要在这里抄一份 get_db 的 commit/rollback：commit 只归 get_db 所有，
@@ -93,3 +107,9 @@ def client(db_session: Session) -> Iterator[TestClient]:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+def auth_client(client: TestClient) -> TestClient:
+    client.headers.update(auth_headers())
+    return client

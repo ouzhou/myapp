@@ -19,8 +19,8 @@ def _assert_error_envelope(body: object) -> dict[str, object]:
     return body
 
 
-def test_success_envelope_carries_no_error_fields(client: TestClient) -> None:
-    response = client.post("/api/v1/projects/", json={"name": f"project-{uuid4()}"})
+def test_success_envelope_carries_no_error_fields(auth_client: TestClient) -> None:
+    response = auth_client.post("/api/v1/projects/", json={"name": f"project-{uuid4()}"})
     assert response.status_code == 201
     body = response.json()
     assert set(body) == _SUCCESS_ENVELOPE_KEYS
@@ -28,8 +28,8 @@ def test_success_envelope_carries_no_error_fields(client: TestClient) -> None:
     assert "deleted_at" not in body["data"]
 
 
-def test_validation_error_shape(client: TestClient) -> None:
-    response = client.post("/api/v1/projects/", json={"name": ""})
+def test_validation_error_shape(auth_client: TestClient) -> None:
+    response = auth_client.post("/api/v1/projects/", json={"name": ""})
     assert response.status_code == 422
     body = _assert_error_envelope(response.json())
     assert body["code"] == BizCode.VALIDATION_ERROR
@@ -39,8 +39,8 @@ def test_validation_error_shape(client: TestClient) -> None:
     assert response.headers["x-request-id"] == body["request_id"]
 
 
-def test_not_found_shape(client: TestClient) -> None:
-    response = client.get(f"/api/v1/projects/{uuid4()}")
+def test_not_found_shape(auth_client: TestClient) -> None:
+    response = auth_client.get(f"/api/v1/projects/{uuid4()}")
     assert response.status_code == 404
     body = _assert_error_envelope(response.json())
     assert body["code"] == ProjectCode.NOT_FOUND
@@ -49,12 +49,12 @@ def test_not_found_shape(client: TestClient) -> None:
     assert body["request_id"]
 
 
-def test_duplicate_name_conflict_shape(client: TestClient) -> None:
+def test_duplicate_name_conflict_shape(auth_client: TestClient) -> None:
     name = f"project-{uuid4()}"
-    created = client.post("/api/v1/projects/", json={"name": name})
+    created = auth_client.post("/api/v1/projects/", json={"name": name})
     assert created.status_code == 201
 
-    conflicted = client.post("/api/v1/projects/", json={"name": name})
+    conflicted = auth_client.post("/api/v1/projects/", json={"name": name})
     assert conflicted.status_code == 409
     body = _assert_error_envelope(conflicted.json())
     assert body["code"] == ProjectCode.NAME_CONFLICT
@@ -62,7 +62,7 @@ def test_duplicate_name_conflict_shape(client: TestClient) -> None:
 
 
 def test_unmapped_integrity_error_is_500_not_409(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """NOT NULL / 外键违约是代码 bug，不能当成客户端 409。"""
 
@@ -76,7 +76,7 @@ def test_unmapped_integrity_error_is_500_not_409(
         raise IntegrityError("INSERT ...", None, _Orig())
 
     monkeypatch.setattr(project_service, "create_project", boom)
-    response = client.post("/api/v1/projects/", json={"name": f"project-{uuid4()}"})
+    response = auth_client.post("/api/v1/projects/", json={"name": f"project-{uuid4()}"})
     assert response.status_code == 500
     body = _assert_error_envelope(response.json())
     assert body["code"] == BizCode.INTERNAL_ERROR
@@ -104,6 +104,8 @@ def test_openapi_scopes_error_responses_to_real_routes(client: TestClient) -> No
     health = spec["paths"]["/api/v1/health"]["get"]["responses"]
     assert "409" not in health
     assert "404" not in health
+    assert "401" not in health
 
     post_projects = spec["paths"]["/api/v1/projects/"]["post"]["responses"]
     assert "409" in post_projects
+    assert "401" in post_projects
