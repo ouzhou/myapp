@@ -1,11 +1,10 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, status
 
 from app.core.response import Envelope, ErrorEnvelope, PageResult, PaginationParams, ok
-from app.db.session import get_db
+from app.deps import CurrentUserDep, DbSession
 from app.modules.projects import service as project_service
 from app.modules.projects.schemas import (
     ProjectCreate,
@@ -14,44 +13,53 @@ from app.modules.projects.schemas import (
     ProjectUpdate,
 )
 
-router = APIRouter(prefix="/projects", tags=["projects"])
-
+UNAUTHORIZED: dict[int | str, dict[str, Any]] = {401: {"model": ErrorEnvelope}}
 NOT_FOUND: dict[int | str, dict[str, Any]] = {404: {"model": ErrorEnvelope}}
 CONFLICT: dict[int | str, dict[str, Any]] = {409: {"model": ErrorEnvelope}}
+
+router = APIRouter(
+    prefix="/projects",
+    tags=["projects"],
+    responses=UNAUTHORIZED,
+)
 
 
 @router.get("/")
 def list_projects(
-    db: Annotated[Session, Depends(get_db)],
+    db: DbSession,
+    user: CurrentUserDep,
     pagination: PaginationParams,
     query: Annotated[ProjectQuery, Query()],
 ) -> Envelope[PageResult[ProjectRead]]:
-    return ok(project_service.list_projects(db, query, pagination))
+    return ok(project_service.list_projects(db, user, query, pagination))
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, responses=CONFLICT)
 def create_project(
     payload: ProjectCreate,
-    db: Annotated[Session, Depends(get_db)],
+    db: DbSession,
+    user: CurrentUserDep,
 ) -> Envelope[ProjectRead]:
-    return ok(project_service.create_project(db, payload))
+    return ok(project_service.create_project(db, user, payload))
 
 
 @router.get("/{project_id}", responses=NOT_FOUND)
 def get_project(
     project_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
+    db: DbSession,
+    user: CurrentUserDep,
 ) -> Envelope[ProjectRead]:
-    return ok(project_service.get_project(db, project_id))
+    return ok(project_service.get_project(db, user, project_id))
 
 
 @router.patch("/{project_id}", responses=NOT_FOUND | CONFLICT)
 def update_project(
     project_id: UUID,
     payload: ProjectUpdate,
-    db: Annotated[Session, Depends(get_db)],
+    db: DbSession,
+    user: CurrentUserDep,
 ) -> Envelope[ProjectRead]:
-    return ok(project_service.update_project(db, project_id, payload))
+    return ok(project_service.update_project(db, user, project_id, payload))
 
 
 @router.delete(
@@ -61,6 +69,7 @@ def update_project(
 )
 def delete_project(
     project_id: UUID,
-    db: Annotated[Session, Depends(get_db)],
+    db: DbSession,
+    user: CurrentUserDep,
 ) -> None:
-    project_service.delete_project(db, project_id)
+    project_service.delete_project(db, user, project_id)

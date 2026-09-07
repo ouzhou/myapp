@@ -49,6 +49,20 @@ body   = {"code":0,"message":"ok","data":{"id":"8e818fb1-...", ...}}
 
 ---
 
+## FastAPI 0.141.1：sync `yield` 依赖里不要 `ContextVar.reset`
+
+`def` 路由和它的 sync `yield` 依赖会被丢进线程池。`anyio` 进线程时 copy 一份 Context，依赖退出段再 copy 一次。`ContextVar.set` 拿到的 Token 和 `reset` 不在同一个 Context 里，直接：
+
+```
+ValueError: Token was created in a different Context
+```
+
+第 6 步只 `set`、不 `reset`。真正的绑定/清理放到第 14 步的异步中间件里做——那边跑在同一条 async Context 上。
+
+类型检查器看不到这条。
+
+---
+
 V1 的方法和装饰器在 V2 里仍可导入，但都带 PEP 702 弃用标记，`mypy` 会逐条报错并给出替代写法，不需要在这里维护对照表。
 
 唯一的例外是 `class Config`：静态检查完全沉默，只在运行时发 **`UserWarning`**（不是 `DeprecationWarning`）：

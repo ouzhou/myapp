@@ -15,7 +15,7 @@ def test_declared_codes_follow_the_encoding_rule(code: int) -> None:
     assert 400 <= http_status_of(code) <= 599
 
 
-@pytest.mark.parametrize("status", [400, 404, 409, 422, 500])
+@pytest.mark.parametrize("status", [400, 401, 404, 409, 422, 500])
 def test_encoding_rule_is_bidirectional(status: int) -> None:
     assert http_status_of(biz_code_of(status)) == status
 

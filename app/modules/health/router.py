@@ -1,17 +1,14 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.deps import DbSession
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health")
-def get_health(db: Annotated[Session, Depends(get_db)]) -> dict[str, str]:
+def get_health(db: DbSession) -> dict[str, str]:
     try:
         db.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:

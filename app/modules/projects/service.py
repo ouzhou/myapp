@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.context import CurrentUser
 from app.core.exceptions import AppError, register_constraint_error
 from app.core.response import PageResult, Pagination
 from app.modules.projects.models import Project
@@ -50,7 +51,10 @@ _SORT_COLUMNS = {
 
 
 def list_projects(
-    db: Session, query: ProjectQuery, pagination: Pagination
+    db: Session,
+    user: CurrentUser,
+    query: ProjectQuery,
+    pagination: Pagination,
 ) -> PageResult[ProjectRead]:
     conditions = [Project.deleted_at.is_(None)]
     if query.q:
@@ -73,11 +77,13 @@ def list_projects(
     )
 
 
-def get_project(db: Session, project_id: UUID) -> ProjectRead:
+def get_project(db: Session, user: CurrentUser, project_id: UUID) -> ProjectRead:
     return ProjectRead.model_validate(_get_active(db, project_id))
 
 
-def create_project(db: Session, payload: ProjectCreate) -> ProjectRead:
+def create_project(
+    db: Session, user: CurrentUser, payload: ProjectCreate
+) -> ProjectRead:
     project = Project(
         name=payload.name,
         description=payload.description,
@@ -89,7 +95,7 @@ def create_project(db: Session, payload: ProjectCreate) -> ProjectRead:
 
 
 def update_project(
-    db: Session, project_id: UUID, payload: ProjectUpdate
+    db: Session, user: CurrentUser, project_id: UUID, payload: ProjectUpdate
 ) -> ProjectRead:
     project = _get_active(db, project_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -99,7 +105,7 @@ def update_project(
     return ProjectRead.model_validate(project)
 
 
-def delete_project(db: Session, project_id: UUID) -> None:
+def delete_project(db: Session, user: CurrentUser, project_id: UUID) -> None:
     project = _get_active(db, project_id)
     project.deleted_at = datetime.now(UTC)
     db.flush()
