@@ -15,13 +15,30 @@ alwaysApply: false
 | `router.py` | 路径、校验、调 service、声明 `Envelope[...]` 返回类型 | 写 SQL、`commit`、解析 JWT |
 | `schemas.py` | Pydantic Create/Update/Read/Query | 继承 ORM model |
 | `models.py` | SQLAlchemy 表 + mixin | 被 router 直接返回 |
-| `service.py` | 业务、租户条件、审计调用；只 `flush` | 读 header / 解 JWT / 自己 `commit` |
+| `service.py` | 业务、租户条件、本模块业务码、审计调用；只 `flush` | 读 header / 解 JWT / 自己 `commit` |
 
 查询先写在 service。不要提前加 `repository.py`。
 
+## 业务码分两层
+
+`core/exceptions.py` 只放编码规则（`http_status_of` / `biz_code_of` 互逆）和 core 自己抛的通用码。**模块专属码放该模块的 `service.py`**，唯一约束的 409 文案由模块调 `register_constraint_error()` 登记。
+
+`core/` 里不许出现「项目名称」这类业务词，也不许 import `psycopg.errors` 之类的驱动异常。
+
+```python
+# ❌ BAD：core 猜业务语义，换张表就回错文案
+if isinstance(exc.orig, UniqueViolation):
+    return envelope_json(..., message="项目名称已存在")
+
+# ✅ GOOD：模块自己登记，core 只查表
+register_constraint_error("uq_projects_name_active", ProjectCode.NAME_CONFLICT, "项目名称已存在")
+```
+
+查不到的 `IntegrityError`（NOT NULL、外键、没登记的唯一约束）是代码 bug，走 500 + traceback，不要伪装成 409。
+
 ## 新文件往哪放
 
-- 配置 / 信封 / 错误 / CurrentUser 类型 → `app/core/`
+- 配置 / 信封 / 错误机制 / CurrentUser 类型 → `app/core/`
 - request_id / 安全头 / 限流 → `app/core/middleware.py`
 - engine、连接池、`get_db`、mixin → `app/db/`
 - 全局 Depends（DbSession、CurrentUserDep）→ `app/deps.py`

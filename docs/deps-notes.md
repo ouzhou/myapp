@@ -20,6 +20,25 @@
 
 ---
 
+## FastAPI 0.141.1：`get_db` 的收尾 commit 跑在响应发出之后
+
+带 `yield` 的依赖，退出段是在响应已经发送之后才 unwind 的。所以 `get_db` 里 `yield` 之后那句 `session.commit()` 失败时，客户端**已经拿到了成功响应**。实测让收尾抛异常：
+
+```
+status = 201
+body   = {"code":0,"message":"ok","data":{"id":"8e818fb1-...", ...}}
+```
+
+500 handler 确实被调用了（日志里有 `unhandled error`），但响应已发送，它返回的 `JSONResponse` 被丢弃。客户端拿到 201 和一个 id，数据却被回滚了。
+
+类型检查器和测试都抓不到这个：happy path 和现有用例全绿。现在能压住风险只是因为 service 每个写路径都 `flush()`，约束会在路由内先炸出来；剩下的暴露面是延迟约束、触发器、以及 commit 阶段连接断开。
+
+**第 12 步（事务）要收口这个**：把 commit 提到响应序列化之前（route 级依赖或显式 UoW），而不是留在依赖退出段。在那之前不要新增「只在 commit 时才会违约」的约束。
+
+同一条的推论：`logger.exception()` 在这个位置打出的是 `NoneType: None`——它读 `sys.exc_info()`，而收尾阶段那里已经清空。handler 里一律写 `logger.error(..., exc_info=exc)`，用传进来的异常对象。
+
+---
+
 ## Pydantic 2.13.5
 
 V1 的方法和装饰器在 V2 里仍可导入，但都带 PEP 702 弃用标记，`mypy` 会逐条报错并给出替代写法，不需要在这里维护对照表。
