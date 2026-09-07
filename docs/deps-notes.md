@@ -12,20 +12,11 @@
 
 ---
 
-## Starlette 1.6.0 + httpx 0.28.1
+## Starlette 1.6.0 + TestClient
 
-**待决问题，会影响测试地基（学习路径第 4 步）。**
+`fastapi.testclient.TestClient` 转发自 Starlette。Starlette 1.6 要求 **httpx2**；继续装 `httpx` 会在导入时发 `StarletteDeprecationWarning`。测试地基走 `uv add --dev pytest httpx2`，测试代码仍写 `TestClient`，不要直接 `import httpx2`。
 
-导入 `starlette.testclient` 时实测抛出：
-
-```
-StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated;
-install `httpx2` instead.
-```
-
-`project-conventions.mdc` 定的是「pytest + httpx `TestClient`」，而 Starlette 1.6 已把 httpx 1.x 这条路标记为弃用、指向 `httpx2`。类型检查器不会报这个。写测试地基之前先定走哪条路，别等一批测试写完再换。
-
-FastAPI 0.141.1 的 `TestClient` 转发自 Starlette，同一个问题。
+类型检查器不会报这条弃用。导入 `TestClient` 时 Starlette 还会发一条 **anyio** 的 `DeprecationWarning`（`anyio.abc.BlockingPortal` 改到 `anyio.from_thread.BlockingPortal`），同样不是类型错误。第 4 步若 `filterwarnings = ["error"]`，两条都要处理，不要只转 `DeprecationWarning` 里的 httpx。
 
 ---
 
