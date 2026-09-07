@@ -1,0 +1,48 @@
+---
+description: 新代码放到哪个目录；模块四件套职责
+globs: app/**/*.py
+alwaysApply: false
+---
+
+# 目录约定
+
+按业务切 `modules/`，横切放 `core/`、`db/`、`deps.py`。路径以 `docs/03-project-structure.md` 为准。
+
+## 模块四件套
+
+| 文件 | 做 | 不做 |
+|---|---|---|
+| `router.py` | 路径、校验、调 service、声明 `Envelope[...]` 返回类型 | 写 SQL、`commit`、解析 JWT |
+| `schemas.py` | Pydantic Create/Update/Read/Query | 继承 ORM model |
+| `models.py` | SQLAlchemy 表 + mixin | 被 router 直接返回 |
+| `service.py` | 业务、租户条件、审计调用；只 `flush` | 读 header / 解 JWT / 自己 `commit` |
+
+查询先写在 service。不要提前加 `repository.py`。
+
+## 新文件往哪放
+
+- 配置 / 信封 / 错误 / CurrentUser 类型 → `app/core/`
+- request_id / 安全头 / 限流 → `app/core/middleware.py`
+- engine、连接池、`get_db`、mixin → `app/db/`
+- 全局 Depends（DbSession、CurrentUserDep）→ `app/deps.py`
+- 只汇总路由 → `app/api/router.py`，handler 写在模块里
+- Casbin / 磁盘 → `app/infra/`
+- 迁移 → 仓库根 `alembic/`，不要放到 `app/alembic/`
+- 初始数据 → `scripts/seed.py`，必须幂等
+- 契约测试 → `tests/api/`
+
+```python
+# ❌ BAD：路由里查库、裸返回实体
+@router.get("/{project_id}")
+def get_project(project_id: uuid.UUID, db: Session):
+    return db.get(Project, project_id)
+
+# ✅ GOOD：路由只组装，返回类型带住 OpenAPI schema
+@router.get("/{project_id}")
+def get_project(
+    project_id: uuid.UUID, db: DbSession, user: CurrentUserDep
+) -> Envelope[ProjectRead]:
+    return Envelope(data=project_service.get(db, user, project_id))
+```
+
+租户条件写在 service 的查询里，不进 Casbin 策略。跨租户返回 404，不返回 403。

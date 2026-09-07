@@ -5,3 +5,15 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi[standard]>=0.141.1",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.1",
+]
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]
+# deprecated 让 PEP 702 的 @deprecated 标记变成报错，专治写出上一个主版本的 API
+enable_error_code = ["deprecated"]
+warn_unused_ignores = true
+warn_redundant_casts = true

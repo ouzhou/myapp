@@ -1,0 +1,14 @@
+---
+description: parallel-cli 搜索结果禁止写到仓库目录
+alwaysApply: true
+---
+
+# 搜索结果不要落在仓库里
+
+可以用 `parallel-cli` 搜索。`-o` 必须写到系统临时目录，例如：
+
+```bash
+parallel-cli search "..." --json -o "/tmp/myapp-search/<name>.json"
+```
+
+禁止写到仓库根目录或 `docs/`。不要为了搜索新建项目内的 json。

@@ -1,0 +1,16 @@
+---
+description: 动过 Python 代码后必须跑类型检查，第三方库 API 以检查器为准
+alwaysApply: true
+---
+
+# 写完跑类型检查
+
+改完 Python 代码，对改动的文件跑：
+
+```bash
+uv run mypy <path>
+```
+
+它开了 `deprecated` 错误码，会把上一个主版本的 API 直接报成错误并给出替代写法。报错就改到干净，别加 `# type: ignore` 绕过。
+
+检查器抓不到的部分（语义过时但类型合法的写法、无 `py.typed` 的包、跨库集成的运行时弃用）记在 `docs/deps-notes.md`，写代码前先读对应小节。
