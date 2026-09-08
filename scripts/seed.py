@@ -8,6 +8,8 @@ from app.db.session import SessionLocal
 from app.modules.tenants.schemas import TenantCreate
 from app.modules.tenants.service import get_or_create_tenant
 from app.modules.users.schemas import UserCreate
+from app.modules.iam.models import Role
+from app.modules.iam.service import ensure_membership_role_by_code
 from app.modules.users.service import get_or_create_membership, get_or_create_user
 
 DEMO_TENANT_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -41,8 +43,14 @@ def seed_demo(db: Session) -> None:
         ),
         user_id=DEMO_MEMBER_ID,
     )
-    get_or_create_membership(db, user_id=admin.id, tenant_id=tenant.id)
-    get_or_create_membership(db, user_id=member.id, tenant_id=tenant.id)
+    admin_membership = get_or_create_membership(
+        db, user_id=admin.id, tenant_id=tenant.id
+    )
+    member_membership = get_or_create_membership(
+        db, user_id=member.id, tenant_id=tenant.id
+    )
+    ensure_membership_role_by_code(db, admin_membership, Role.CODE_OWNER)
+    ensure_membership_role_by_code(db, member_membership, Role.CODE_MEMBER)
 
 
 def main() -> None:

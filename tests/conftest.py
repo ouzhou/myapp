@@ -92,7 +92,9 @@ def ensure_identity(
     is_platform_admin: bool = False,
     last_selected_tenant_id: UUID | None = None,
     membership_created_at: datetime | None = None,
+    role_code: str | None = "owner",
 ) -> tuple[UUID, UUID, UUID]:
+    from app.modules.iam.service import ensure_membership_role_by_code
     from app.modules.tenants.schemas import TenantCreate
     from app.modules.tenants.service import get_or_create_tenant
     from app.modules.users.schemas import UserCreate
@@ -122,6 +124,8 @@ def ensure_identity(
         tenant_id=tenant.id,
         created_at=membership_created_at,
     )
+    if role_code is not None:
+        ensure_membership_role_by_code(db, membership, role_code)
     db.flush()
     return user.id, tenant.id, membership.id
 
@@ -131,11 +135,11 @@ def auth_headers(
     *,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
-    permissions: str = "",
     is_platform_admin: bool = False,
     include_tenant: bool = True,
     last_selected_tenant_id: UUID | None = None,
     membership_created_at: datetime | None = None,
+    role_code: str | None = "owner",
 ) -> dict[str, str]:
     resolved_user_id, resolved_tenant_id, _membership_id = ensure_identity(
         db,
@@ -144,11 +148,9 @@ def auth_headers(
         is_platform_admin=is_platform_admin,
         last_selected_tenant_id=last_selected_tenant_id,
         membership_created_at=membership_created_at,
+        role_code=role_code,
     )
-    headers = {
-        "X-User-Id": str(resolved_user_id),
-        "X-Permissions": permissions,
-    }
+    headers = {"X-User-Id": str(resolved_user_id)}
     if include_tenant:
         headers["X-Tenant-Id"] = str(resolved_tenant_id)
     return headers

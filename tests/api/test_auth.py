@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.permissions import Perm
 from app.core.context import CurrentUser
 from app.core.exceptions import BizCode
 from app.core.response import PageResult, Pagination
@@ -68,7 +69,6 @@ def test_service_receives_current_user_from_headers(
         headers={
             "X-User-Id": str(user_id),
             "X-Tenant-Id": str(tenant_id),
-            "X-Permissions": "project:read, project:write",
         },
     )
     assert response.status_code == 200
@@ -76,13 +76,13 @@ def test_service_receives_current_user_from_headers(
     assert captured[0].user_id == user_id
     assert captured[0].tenant_id == tenant_id
     assert captured[0].membership_id == membership_id
-    assert captured[0].permissions == ["project:read", "project:write"]
+    assert set(captured[0].permissions) == {perm.value for perm in Perm}
     assert captured[0].is_platform_admin is True
 
 
 def test_missing_tenant_header_falls_back_to_membership(
     client: TestClient, db_session: Session
 ) -> None:
-    headers = auth_headers(db_session, include_tenant=False, permissions="project:read")
+    headers = auth_headers(db_session, include_tenant=False)
     response = client.get("/api/v1/projects/", headers=headers)
     assert response.status_code == 200

@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BizCode
+from app.modules.iam.models import MembershipRole, Role
 from app.modules.tenants.models import Tenant
 from app.modules.users.models import Membership, User
 from scripts.seed import (
@@ -103,6 +104,8 @@ def test_seed_is_idempotent(db_session: Session) -> None:
     assert db_session.scalar(select(func.count()).select_from(Tenant)) == 1
     assert db_session.scalar(select(func.count()).select_from(User)) == 2
     assert db_session.scalar(select(func.count()).select_from(Membership)) == 2
+    assert db_session.scalar(select(func.count()).select_from(Role)) == 3
+    assert db_session.scalar(select(func.count()).select_from(MembershipRole)) == 2
     emails = set(db_session.scalars(select(User.email)))
     assert emails == {DEMO_ADMIN_EMAIL, DEMO_MEMBER_EMAIL}
     assert db_session.scalars(select(Tenant.slug)).first() == DEMO_TENANT_SLUG
