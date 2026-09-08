@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, MetaData, func
+from sqlalchemy import DateTime, ForeignKey, MetaData, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 NAMING_CONVENTION = {
@@ -18,7 +18,10 @@ class Base(DeclarativeBase):
 
 
 class TenantMixin:
-    tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tenants.id"),
+        nullable=False,
+    )
 
 
 class TimestampMixin:

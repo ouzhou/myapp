@@ -7,6 +7,8 @@ from app.core.config import get_settings
 from app.db.base import Base
 from app.modules.audit import models as audit_models  # noqa: F401
 from app.modules.projects import models as project_models  # noqa: F401
+from app.modules.tenants import models as tenant_models  # noqa: F401
+from app.modules.users import models as user_models  # noqa: F401
 
 config = context.config
 

@@ -53,7 +53,14 @@ def test_update_writes_audit_row(
 
 
 def test_audit_rolls_back_when_write_fails_after_it(db_session: Session) -> None:
-    user = CurrentUser(user_id=uuid4(), tenant_id=uuid4(), roles=["admin"])
+    from tests.conftest import ensure_identity
+
+    user_id, tenant_id, membership_id = ensure_identity(db_session)
+    user = CurrentUser(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        membership_id=membership_id,
+    )
     created = project_service.create_project(
         db_session, user, ProjectCreate(name=f"project-{uuid4()}")
     )

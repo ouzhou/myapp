@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -81,17 +82,76 @@ def db_session(engine: Engine) -> Iterator[Session]:
         connection.close()
 
 
-def auth_headers(
+def ensure_identity(
+    db: Session,
     *,
     user_id: UUID | None = None,
     tenant_id: UUID | None = None,
-    roles: str = "admin",
+    email: str | None = None,
+    display_name: str = "测试用户",
+    is_platform_admin: bool = False,
+    last_selected_tenant_id: UUID | None = None,
+    membership_created_at: datetime | None = None,
+) -> tuple[UUID, UUID, UUID]:
+    from app.modules.tenants.schemas import TenantCreate
+    from app.modules.tenants.service import get_or_create_tenant
+    from app.modules.users.schemas import UserCreate
+    from app.modules.users.service import get_or_create_membership, get_or_create_user
+
+    resolved_user_id = user_id or uuid4()
+    resolved_tenant_id = tenant_id or uuid4()
+    tenant = get_or_create_tenant(
+        db,
+        TenantCreate(slug=f"t-{resolved_tenant_id.hex[:12]}", name="测试租户"),
+        tenant_id=resolved_tenant_id,
+    )
+    user = get_or_create_user(
+        db,
+        UserCreate(
+            email=email or f"user-{resolved_user_id.hex}@example.test",
+            display_name=display_name,
+            is_platform_admin=is_platform_admin,
+        ),
+        user_id=resolved_user_id,
+    )
+    if last_selected_tenant_id is not None:
+        user.last_selected_tenant_id = last_selected_tenant_id
+    membership = get_or_create_membership(
+        db,
+        user_id=user.id,
+        tenant_id=tenant.id,
+        created_at=membership_created_at,
+    )
+    db.flush()
+    return user.id, tenant.id, membership.id
+
+
+def auth_headers(
+    db: Session,
+    *,
+    user_id: UUID | None = None,
+    tenant_id: UUID | None = None,
+    permissions: str = "",
+    is_platform_admin: bool = False,
+    include_tenant: bool = True,
+    last_selected_tenant_id: UUID | None = None,
+    membership_created_at: datetime | None = None,
 ) -> dict[str, str]:
-    return {
-        "X-User-Id": str(user_id or uuid4()),
-        "X-Tenant-Id": str(tenant_id or uuid4()),
-        "X-Roles": roles,
+    resolved_user_id, resolved_tenant_id, _membership_id = ensure_identity(
+        db,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        is_platform_admin=is_platform_admin,
+        last_selected_tenant_id=last_selected_tenant_id,
+        membership_created_at=membership_created_at,
+    )
+    headers = {
+        "X-User-Id": str(resolved_user_id),
+        "X-Permissions": permissions,
     }
+    if include_tenant:
+        headers["X-Tenant-Id"] = str(resolved_tenant_id)
+    return headers
 
 
 @pytest.fixture
@@ -110,6 +170,6 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def auth_client(client: TestClient) -> TestClient:
-    client.headers.update(auth_headers())
+def auth_client(client: TestClient, db_session: Session) -> TestClient:
+    client.headers.update(auth_headers(db_session))
     return client
