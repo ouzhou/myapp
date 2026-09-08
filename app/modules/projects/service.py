@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import IntEnum
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -8,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.context import CurrentUser
 from app.core.exceptions import AppError, register_constraint_error
 from app.core.response import PageResult, Pagination
+from app.modules.audit.service import RESOURCE_PROJECT, record as record_audit
 from app.modules.projects.models import Project
 from app.modules.projects.schemas import (
     ProjectCreate,
@@ -26,22 +28,31 @@ class ProjectCode(IntEnum):
 
 # 约束名跟 models.py 里 __table_args__ 的 Index 同名，改一处要改两处。
 register_constraint_error(
-    "uq_projects_name_active",
+    "uq_projects_tenant_id_name_active",
     ProjectCode.NAME_CONFLICT,
     "项目名称已存在",
 )
 
 
-def _get_active(db: Session, project_id: UUID) -> Project:
+def _get_active(db: Session, user: CurrentUser, project_id: UUID) -> Project:
     project = db.scalars(
         select(Project).where(
             Project.id == project_id,
+            Project.tenant_id == user.tenant_id,
             Project.deleted_at.is_(None),
         )
     ).first()
     if project is None:
         raise AppError(ProjectCode.NOT_FOUND, "项目不存在")
     return project
+
+
+def _snapshot(project: Project) -> dict[str, Any]:
+    return {
+        "name": project.name,
+        "description": project.description,
+        "status": project.status,
+    }
 
 
 _SORT_COLUMNS = {
@@ -56,7 +67,10 @@ def list_projects(
     query: ProjectQuery,
     pagination: Pagination,
 ) -> PageResult[ProjectRead]:
-    conditions = [Project.deleted_at.is_(None)]
+    conditions = [
+        Project.tenant_id == user.tenant_id,
+        Project.deleted_at.is_(None),
+    ]
     if query.q:
         conditions.append(Project.name.ilike(f"%{query.q}%"))
     column = _SORT_COLUMNS[query.sort]
@@ -78,34 +92,62 @@ def list_projects(
 
 
 def get_project(db: Session, user: CurrentUser, project_id: UUID) -> ProjectRead:
-    return ProjectRead.model_validate(_get_active(db, project_id))
+    return ProjectRead.model_validate(_get_active(db, user, project_id))
 
 
 def create_project(
     db: Session, user: CurrentUser, payload: ProjectCreate
 ) -> ProjectRead:
     project = Project(
+        tenant_id=user.tenant_id,
         name=payload.name,
         description=payload.description,
         status=payload.status,
     )
     db.add(project)
     db.flush()
+    record_audit(
+        db,
+        user=user,
+        action="create",
+        resource_type=RESOURCE_PROJECT,
+        resource_id=project.id,
+        after=_snapshot(project),
+    )
     return ProjectRead.model_validate(project)
 
 
 def update_project(
     db: Session, user: CurrentUser, project_id: UUID, payload: ProjectUpdate
 ) -> ProjectRead:
-    project = _get_active(db, project_id)
+    project = _get_active(db, user, project_id)
+    before = _snapshot(project)
     changes = payload.model_dump(exclude_unset=True)
     for field, value in changes.items():
         setattr(project, field, value)
     db.flush()
+    record_audit(
+        db,
+        user=user,
+        action="update",
+        resource_type=RESOURCE_PROJECT,
+        resource_id=project.id,
+        before=before,
+        after=_snapshot(project),
+    )
     return ProjectRead.model_validate(project)
 
 
 def delete_project(db: Session, user: CurrentUser, project_id: UUID) -> None:
-    project = _get_active(db, project_id)
+    project = _get_active(db, user, project_id)
+    before = _snapshot(project)
     project.deleted_at = datetime.now(UTC)
     db.flush()
+    record_audit(
+        db,
+        user=user,
+        action="delete",
+        resource_type=RESOURCE_PROJECT,
+        resource_id=project.id,
+        before=before,
+    )

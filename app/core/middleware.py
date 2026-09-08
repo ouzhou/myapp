@@ -2,6 +2,8 @@ from uuid import uuid4
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.core.context import client_ip_ctx, request_id_ctx
+
 _REQUEST_ID_HEADER = b"x-request-id"
 _MAX_REQUEST_ID_LEN = 128
 
@@ -17,6 +19,14 @@ def _incoming_request_id(scope: Scope) -> str:
     return str(uuid4())
 
 
+def _client_ip(scope: Scope) -> str | None:
+    client = scope.get("client")
+    if not isinstance(client, (list, tuple)) or not client:
+        return None
+    host = client[0]
+    return host if isinstance(host, str) and host else None
+
+
 class RequestIdMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -30,6 +40,8 @@ class RequestIdMiddleware:
         scope.setdefault("state", {})
         scope["state"]["request_id"] = request_id
         header_value = request_id.encode("latin-1")
+        request_id_token = request_id_ctx.set(request_id)
+        client_ip_token = client_ip_ctx.set(_client_ip(scope))
 
         async def send_with_id(message: Message) -> None:
             if message["type"] == "http.response.start":
@@ -42,4 +54,8 @@ class RequestIdMiddleware:
                 message = {**message, "headers": headers}
             await send(message)
 
-        await self.app(scope, receive, send_with_id)
+        try:
+            await self.app(scope, receive, send_with_id)
+        finally:
+            request_id_ctx.reset(request_id_token)
+            client_ip_ctx.reset(client_ip_token)

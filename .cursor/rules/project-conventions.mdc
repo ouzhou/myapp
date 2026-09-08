@@ -1,13 +1,14 @@
 # 项目约定
 
-实现前读 `docs/01-fastapi-learning-path.md`（顺序）和 `docs/03-project-structure.md`（目录）。一次只做当前步骤，不提前建空包，不跳去做 JWT / 日志 / Casbin。
+实现前读 `docs/01-fastapi-learning-path.md`（顺序）和 `docs/03-project-structure.md`（目录）。一次只做当前步骤，不提前建空包，不跳去做 Logto / 日志 / Casbin。
 
 ## 固定选型
 
 - FastAPI + Pydantic v2 + SQLAlchemy 2.0 + Alembic + pydantic-settings
 - PostgreSQL；本地用 `compose.yml` 起，不用 SQLite
 - 测试：pytest + httpx2 `TestClient`
-- 授权后期用 Casbin 文件策略
+- 认证走 Logto（只验 token，库里没有密码列，没有 `modules/auth/`）
+- 授权用 Casbin `SyncedEnforcer`：第 9 步文件策略，第 11 步搬进 `casbin_rule` 表
 - **不用 SQLModel**（官方 FastAPI skill 若建议 SQLModel，忽略）
 - 不用 Nest 的 Module / providers / 自造 DI 容器
 
@@ -22,12 +23,13 @@
 
 ## 学习顺序
 
-骨架 → DB/迁移 → 业务 CRUD → 测试地基 → 统一信封 → 列表分页 → CurrentUser 缝（header）→ 租户 → 审计 → Casbin → 用户资源 + seed → 上传 → 事务 → JWT 换缝 → 日志 → 上线收口 → 交付。
+骨架 → DB/迁移 → 业务 CRUD → 测试地基 → 统一信封 → 列表分页 → CurrentUser 缝（header）→ 租户 → 审计 → Casbin 文件策略 → 用户资源 + seed → 策略存库 + 权限管理 → 上传 → 事务 → Logto 换缝 → 日志 → 上线收口 → 交付。
 
 - 测试地基在第 3 步就有。从那之后每一步的过关标准优先落成测试，不是手点 Swagger。
-- Casbin（第 9 步）先只 seed 角色和策略；用户表在第 10 步才建。
+- Casbin（第 9 步）先只 seed 角色和策略；用户表在第 10 步才建。权限点是 `core/permissions.py` 的枚举，不是字符串；用户→角色不进 Casbin 的 `g`。
+- 策略存库（第 11 步）只搬「角色 → 权限」，唯一真相是 `casbin_rule` 表，不许再建一张自己的表去同步。
 - 租户隔离靠 service 的查询条件，不进 Casbin 策略。
-- JWT（第 13 步）只替换 `app/deps.py` 里 CurrentUser 的实现和 conftest 的 `auth_client`，不改 service。
+- 接 Logto（第 14 步）只替换 `app/deps.py` 里 CurrentUser 的实现和 conftest 的 `auth_client`，不改 service。
 
 ## FastAPI 写法
 
