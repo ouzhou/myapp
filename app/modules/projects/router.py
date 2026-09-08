@@ -1,10 +1,12 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Depends, Query, status
 
+from app.core.context import CurrentUser
+from app.core.permissions import Perm, require_perm
 from app.core.response import Envelope, ErrorEnvelope, PageResult, PaginationParams, ok
-from app.deps import CurrentUserDep, DbSession
+from app.deps import DbSession
 from app.modules.projects import service as project_service
 from app.modules.projects.schemas import (
     ProjectCreate,
@@ -14,20 +16,24 @@ from app.modules.projects.schemas import (
 )
 
 UNAUTHORIZED: dict[int | str, dict[str, Any]] = {401: {"model": ErrorEnvelope}}
+FORBIDDEN: dict[int | str, dict[str, Any]] = {403: {"model": ErrorEnvelope}}
 NOT_FOUND: dict[int | str, dict[str, Any]] = {404: {"model": ErrorEnvelope}}
 CONFLICT: dict[int | str, dict[str, Any]] = {409: {"model": ErrorEnvelope}}
+
+ProjectReader = Annotated[CurrentUser, Depends(require_perm(Perm.PROJECT_READ))]
+ProjectWriter = Annotated[CurrentUser, Depends(require_perm(Perm.PROJECT_WRITE))]
 
 router = APIRouter(
     prefix="/projects",
     tags=["projects"],
-    responses=UNAUTHORIZED,
+    responses=UNAUTHORIZED | FORBIDDEN,
 )
 
 
 @router.get("/")
 def list_projects(
     db: DbSession,
-    user: CurrentUserDep,
+    user: ProjectReader,
     pagination: PaginationParams,
     query: Annotated[ProjectQuery, Query()],
 ) -> Envelope[PageResult[ProjectRead]]:
@@ -38,7 +44,7 @@ def list_projects(
 def create_project(
     payload: ProjectCreate,
     db: DbSession,
-    user: CurrentUserDep,
+    user: ProjectWriter,
 ) -> Envelope[ProjectRead]:
     return ok(project_service.create_project(db, user, payload))
 
@@ -47,7 +53,7 @@ def create_project(
 def get_project(
     project_id: UUID,
     db: DbSession,
-    user: CurrentUserDep,
+    user: ProjectReader,
 ) -> Envelope[ProjectRead]:
     return ok(project_service.get_project(db, user, project_id))
 
@@ -57,7 +63,7 @@ def update_project(
     project_id: UUID,
     payload: ProjectUpdate,
     db: DbSession,
-    user: CurrentUserDep,
+    user: ProjectWriter,
 ) -> Envelope[ProjectRead]:
     return ok(project_service.update_project(db, user, project_id, payload))
 
@@ -70,6 +76,6 @@ def update_project(
 def delete_project(
     project_id: UUID,
     db: DbSession,
-    user: CurrentUserDep,
+    user: ProjectWriter,
 ) -> None:
     project_service.delete_project(db, user, project_id)

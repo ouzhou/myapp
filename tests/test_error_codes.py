@@ -7,10 +7,11 @@ from app.core.exceptions import (
     http_status_of,
     register_constraint_error,
 )
+from app.modules.iam.service import IamCode
 from app.modules.projects.service import ProjectCode
 
 
-@pytest.mark.parametrize("code", [*BizCode, *ProjectCode])
+@pytest.mark.parametrize("code", [*BizCode, *ProjectCode, *IamCode])
 def test_declared_codes_follow_the_encoding_rule(code: int) -> None:
     assert 400 <= http_status_of(code) <= 599
 

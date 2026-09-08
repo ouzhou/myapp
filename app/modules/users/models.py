@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Index, String, text
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, SoftDeleteMixin, TimestampMixin
@@ -53,6 +53,7 @@ class Membership(TimestampMixin, Base):
             "tenant_id",
             unique=True,
         ),
+        UniqueConstraint("id", "tenant_id"),
         Index("ix_memberships_user_id_created_at", "user_id", "created_at"),
     )
 

@@ -26,6 +26,9 @@ def create_tenant(db: Session, payload: TenantCreate, *, tenant_id: UUID | None 
     )
     db.add(tenant)
     db.flush()
+    from app.modules.iam.service import ensure_system_roles
+
+    ensure_system_roles(db, tenant.id)
     return tenant
 
 
@@ -39,5 +42,8 @@ def get_or_create_tenant(
         select(Tenant).where(Tenant.slug == payload.slug, Tenant.deleted_at.is_(None))
     ).first()
     if existing is not None:
+        from app.modules.iam.service import ensure_system_roles
+
+        ensure_system_roles(db, existing.id)
         return existing
     return create_tenant(db, payload, tenant_id=tenant_id)
