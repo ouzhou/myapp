@@ -33,7 +33,7 @@ body   = {"code":0,"message":"ok","data":{"id":"8e818fb1-...", ...}}
 
 类型检查器和测试都抓不到这个：happy path 和现有用例全绿。现在能压住风险只是因为 service 每个写路径都 `flush()`，约束会在路由内先炸出来；剩下的暴露面是延迟约束、触发器、以及 commit 阶段连接断开。
 
-**第 12 步（事务）要收口这个**：把 commit 提到响应序列化之前（route 级依赖或显式 UoW），而不是留在依赖退出段。在那之前不要新增「只在 commit 时才会违约」的约束。
+**第 13 步（事务）要收口这个**：把 commit 提到响应序列化之前（route 级依赖或显式 UoW），而不是留在依赖退出段。在那之前不要新增「只在 commit 时才会违约」的约束。
 
 同一条的推论：`logger.exception()` 在这个位置打出的是 `NoneType: None`——它读 `sys.exc_info()`，而收尾阶段那里已经清空。handler 里一律写 `logger.error(..., exc_info=exc)`，用传进来的异常对象。
 
@@ -57,7 +57,7 @@ body   = {"code":0,"message":"ok","data":{"id":"8e818fb1-...", ...}}
 ValueError: Token was created in a different Context
 ```
 
-第 6 步只 `set`、不 `reset`。真正的绑定/清理放到第 14 步的异步中间件里做——那边跑在同一条 async Context 上。
+第 6 步只 `set`、不 `reset`。真正的绑定/清理放到第 15 步的异步中间件里做——那边跑在同一条 async Context 上。
 
 类型检查器看不到这条。
 

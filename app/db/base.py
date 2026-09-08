@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, MetaData, func
@@ -14,6 +15,10 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+class TenantMixin:
+    tenant_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
 
 
 class TimestampMixin:

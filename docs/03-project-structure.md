@@ -96,8 +96,8 @@ Nest 的模块能成立，是因为有 DI 容器：`Module` 声明 providers，�
 ```text
 myapp/
   pyproject.toml               # 依赖 + [tool.fastapi] entrypoint + ruff/mypy/pytest 配置
-  compose.yml                  # 第 1 步只有 postgres，第 16 步补 api
-  Dockerfile                   # 第 16 步
+  compose.yml                  # 第 1 步只有 postgres，第 17 步补 api
+  Dockerfile                   # 第 17 步
   .dockerignore
   .env.example                 # 只有键名和假值，真值在 gitignore 掉的 .env
   alembic.ini
@@ -120,7 +120,7 @@ myapp/
       exceptions.py            # AppError、业务码编码规则、通用码、handler
       response.py              # Envelope[T]、PageResult[T]
       middleware.py            # request_id、安全头、限流
-      security.py              # JWT、密码；第 13 步才有内容
+      security.py              # 验 Logto 的 token（JWKS）；第 14 步才有内容
       permissions.py           # Casbin 封装
       context.py               # CurrentUser 数据类型 + ContextVar
       logging.py
@@ -132,11 +132,7 @@ myapp/
     modules/
       health/
         router.py
-      auth/                    # 登录，第 13 步才出现
-        router.py
-        schemas.py
-        service.py
-      users/                   # 第 10 步
+      users/                   # 第 10 步；含 Logto 用户映射，/me 也在这里
         router.py
         schemas.py
         models.py
@@ -149,21 +145,25 @@ myapp/
       audit/                   # 第 8 步，只有 model + 写入函数
         models.py
         service.py
-      files/                   # 第 11 步
+      roles/                   # 第 11 步；权限点和策略的管理接口，没有 models.py
+        router.py
+        schemas.py
+        service.py
+      files/                   # 第 12 步
         router.py
         schemas.py
         models.py
         service.py
     infra/                     # 对外适配，业务模块只依赖它的接口
       casbin/
-        enforcer.py
+        enforcer.py            # SyncedEnforcer + get_enforcer() 依赖
         model.conf
-        policy.csv
+        policy.csv             # 只在第 9–10 步存在，第 11 步搬进 casbin_rule 表后删掉
       storage/
-        local.py               # 第 11 步
+        local.py               # 第 12 步
   .github/
     workflows/
-      ci.yml                   # 第 16 步
+      ci.yml                   # 第 17 步
 ```
 
 以后每加一个业务（数据集、任务、质检），只在 `modules/` 下加一个目录，四件套：`router / schemas / models / service`。不必再往 `core/` 里堆。
@@ -203,16 +203,16 @@ entrypoint = "app.main:app"
 
 | 文件 | 放什么 | 学习步骤 |
 |---|---|---|
-| `config.py` | 环境变量、Settings、prod 启动断言 | 0、15 |
+| `config.py` | 环境变量、Settings、prod 启动断言 | 0、16 |
 | `exceptions.py` | `AppError`、业务码编码规则、通用码枚举、handler、约束名注册表 | 4 |
 | `response.py` | `Envelope[T]`、`PageResult[T]`、分页参数依赖 | 4、5 |
-| `middleware.py` | request_id、安全头、限流 | 4、15 |
+| `middleware.py` | request_id、安全头、限流 | 4、16 |
 | `context.py` | `CurrentUser` 的数据结构 + ContextVar | 6 |
-| `permissions.py` | `require_perm("project", "write")` | 9 |
-| `security.py` | 密码哈希、JWT 签发校验 | 13 |
-| `logging.py` | 结构化日志配置 | 14 |
+| `permissions.py` | 权限点枚举 + `require_perm(Perm.PROJECT_WRITE)` | 9 |
+| `security.py` | JWKS 客户端、校验 Logto 发的 token（**不含**密码哈希，也不含签发 token） | 14 |
+| `logging.py` | 结构化日志配置 | 15 |
 
-`security.py` 在第 13 步之前**不要提前建空文件**。
+`security.py` 在第 14 步之前**不要提前建空文件**。它是「验别人发的证」，不是「自己发证」：本项目认证走 Logto，仓库里没有密码列、没有登录接口，也就没有 `modules/auth/` 这个目录。`/me` 归 `modules/users/`。
 
 业务码分两层，别让它变成一个所有模块都要来改一笔的 god enum：
 
@@ -242,7 +242,7 @@ entrypoint = "app.main:app"
 这里只放跨模块都要用的：
 
 - `DbSession = Annotated[Session, Depends(get_db)]`
-- `CurrentUserDep`（第 6 步读 header，第 13 步改成读 Bearer）
+- `CurrentUserDep`（第 6 步读 header，第 14 步改成「验 Logto 的 Bearer token + 查本地 `logto_user_id` 映射」）
 - 可选：`RequestIdDep`
 
 某个模块自己的依赖（例如「必须是项目成员」）写在该模块里，例如 `modules/projects/deps.py`，不要塞进全局。
@@ -273,14 +273,14 @@ api_router.include_router(projects.router)
 
 没有 `repository.py` 也可以。查询先写在 service 里。等同一个表的查询出现三处以上、或租户条件开始复制，再抽 `repository.py`。不要为了「像 Nest」提前加一层空转发。
 
-`commit` 只在一个地方发生（`get_db` 依赖的收尾或 service 入口函数）。service 内部只 `flush`。这一条比目录结构重要——到处 `commit` 会让第 12 步的事务直接失效。
+`commit` 只在一个地方发生（`get_db` 依赖的收尾或 service 入口函数）。service 内部只 `flush`。这一条比目录结构重要——到处 `commit` 会让第 13 步的事务直接失效。
 
 ### `app/infra/`
 
 外部系统的适配：Casbin 文件、本地磁盘、以后的 S3、邮件。
 模块的 service 可以调用 `infra`，`infra` 不准反向 import `modules`。
 
-`storage/local.py` 先把接口定成 `save / open / delete` 三个函数。第 11 步只有本地实现，以后加 S3 时业务代码不用改。
+`storage/local.py` 先把接口定成 `save / open / delete` 三个函数。第 12 步只有本地实现，以后加 S3 时业务代码不用改。
 
 ### `scripts/` 和 seed
 
@@ -300,7 +300,7 @@ Seed 必须**幂等**：跑两次不报错、不产生重复数据。用「查�
 | `engine` | session | 指向独立测试库，跑一次 `alembic upgrade head` |
 | `db_session` | function | 开外层事务并绑 session，测完 `rollback`，保证测试间干净 |
 | `client` | function | `TestClient` + `app.dependency_overrides[get_db]` 指向 `db_session` |
-| `auth_client` | function | 造身份。第 6 步塞 header，第 13 步签真 token——**换 JWT 时只改这一个 fixture** |
+| `auth_client` | function | 造身份。第 6 步塞 header，第 14 步改成用自签 RSA 密钥造一个「长得像 Logto」的 token 并把取公钥那一处 override 掉——**接 Logto 时只改这一个 fixture，测试不连真 Logto** |
 
 测试库和开发库分开，用单独的环境变量（例如 `TEST_DATABASE_URL`）。绝对不要让测试跑在开发库上。
 
@@ -315,7 +315,7 @@ HTTP PATCH /api/v1/projects/{id}
   app/main.py                         组装好的 app、中间件（request_id）
   app/api/router.py                   转到 projects.router
   modules/projects/router.py          校验 Update DTO，注入 CurrentUser / DbSession
-                                      路由上 Depends(require_perm("project", "write"))
+                                      路由上 Depends(require_perm(Perm.PROJECT_WRITE))
   modules/projects/service.py         租户条件查行、改字段、写审计
   modules/projects/models.py          表结构
   modules/projects/schemas.py         转成 Read DTO，不返回 Entity
@@ -335,14 +335,18 @@ service 抛 AppError
 权限（第 9 步之后）：
 
 ```text
-router 上 Depends(require_perm("project", "write"))
-  → core/permissions.py
-    → infra/casbin 的 enforcer（lifespan 里已加载）
+router 上 Depends(require_perm(Perm.PROJECT_WRITE))
+  → core/permissions.py            权限点是这里的枚举，不是字符串
+    → get_enforcer() 依赖
+      → infra/casbin 的 SyncedEnforcer（lifespan 里建一次）
+        → 第 9–10 步读 policy.csv；第 11 步起读 casbin_rule 表并定期重载
 ```
+
+用户→角色不在 Casbin 里：`CurrentUser.roles` 已经带着角色进来，`require_perm` 逐个角色问 enforcer。所以改一个人的角色不需要刷新任何内存。
 
 租户不在这条链上出现——它在 service 的查询条件里，跨租户查不到就是 404。
 
-JWT（第 13 步）只改 `app/deps.py` 里 CurrentUser 的实现。上面这条链不用动。
+接 Logto（第 14 步）只改 `app/deps.py` 里 CurrentUser 的实现——从「读 header」变成「验 token + 查 `logto_user_id` 映射」。上面这条链不用动。
 
 ---
 
@@ -358,7 +362,8 @@ JWT（第 13 步）只改 `app/deps.py` 里 CurrentUser 的实现。上面这条
 | 某个模块专属的业务码和 409 文案 | 该模块的 `service.py` |
 | request_id / 安全头 / 限流 | `core/middleware.py` |
 | 当前用户长什么样 | `core/context.py` |
-| 解析 JWT / 读假 header | `app/deps.py` + `core/security.py` |
+| 验 Logto 的 token / 读假 header | `app/deps.py` + `core/security.py` |
+| Logto 用户 → 本地用户的映射和建人 | `modules/users/service.py` |
 | Casbin 怎么问 | `core/permissions.py` + `infra/casbin/` |
 | 日志格式和上下文绑定 | `core/logging.py` |
 | 时间戳、软删字段、约束命名 | `db/base.py` |
@@ -393,6 +398,7 @@ JWT（第 13 步）只改 `app/deps.py` 里 CurrentUser 的实现。上面这条
 | 业务 | 写在 route / crud | Service | **service.py** |
 | 注入 | `deps.py` | 容器 + Guard | **deps.py + Depends** |
 | 权限 | `is_superuser` | Guard / Casbin | **Depends + Casbin（第 9 步）** |
+| 认证 | 自签 JWT + 密码哈希 | Passport JWT / 自建登录 | **Logto 发 token，只验签 + 查本地映射，无登录接口** |
 | 租户 | 无 | 中间件 / CLS | **service 查询条件 + 复合索引** |
 | 返回 | 模型或 `Message` | Interceptor 信封 | **`Envelope[T]` in core/response.py** |
 | 错误 | `HTTPException` | ExceptionFilter | **core/exceptions.py + 错误码枚举** |
@@ -419,12 +425,13 @@ JWT（第 13 步）只改 `app/deps.py` 里 CurrentUser 的实现。上面这条
 | 7 | 项目 model 加 `tenant_id` + 复合索引，迁移改约束，`tests/api/test_tenant_isolation.py` |
 | 8 | `modules/audit/`（只要 model + 一个写入函数） |
 | 9 | `infra/casbin/`、`core/permissions.py`、`scripts/seed.py`（只写策略）、`tests/api/test_permissions.py` |
-| 10 | `modules/users/`，seed 升级为写真用户 |
-| 11 | `infra/storage/local.py`、`modules/files/` |
-| 12 | 仍在已有 service 里开事务，不新目录 |
-| 13 | `modules/auth/`、`core/security.py`，改 `deps.py` 和 conftest 的 `auth_client` |
-| 14 | `core/logging.py` |
-| 15 | 改 `core/middleware.py`、`core/config.py`、`db/session.py`、health 拆 live/ready |
-| 16 | `Dockerfile`、`.dockerignore`、compose 补 api、`.github/workflows/ci.yml`、`README.md` |
+| 10 | `modules/users/`（含 `logto_user_id` 列和 `/me`），seed 升级为写真用户 |
+| 11 | `modules/roles/`、`casbin_rule` 建表迁移，改 `infra/casbin/enforcer.py` 和 `scripts/seed.py`，删 `policy.csv` |
+| 12 | `infra/storage/local.py`、`modules/files/` |
+| 13 | 仍在已有 service 里开事务，不新目录 |
+| 14 | `core/security.py`（验 Logto token），改 `deps.py`、`core/config.py` 和 conftest 的 `auth_client`。**不建 `modules/auth/`** |
+| 15 | `core/logging.py` |
+| 16 | 改 `core/middleware.py`、`core/config.py`、`db/session.py`、health 拆 live/ready |
+| 17 | `Dockerfile`、`.dockerignore`、compose 补 api、`.github/workflows/ci.yml`、`README.md` |
 
 这样目录是学出来的，不是抄出来的。
