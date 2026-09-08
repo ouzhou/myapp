@@ -9,7 +9,9 @@ class CurrentUser(BaseModel):
 
     user_id: UUID
     tenant_id: UUID
-    roles: list[str] = Field(default_factory=list)
+    membership_id: UUID | None = None
+    permissions: list[str] = Field(default_factory=list)
+    is_platform_admin: bool = False
 
 
 current_user_ctx: ContextVar[CurrentUser | None] = ContextVar(
