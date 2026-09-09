@@ -15,9 +15,7 @@ class Role(TimestampMixin, Base):
         UniqueConstraint("id", "tenant_id"),
     )
 
-    CODE_OWNER = "owner"
-    CODE_ADMIN = "admin"
-    CODE_MEMBER = "member"
+    CODE_TENANT_ADMIN = "tenant_admin"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(

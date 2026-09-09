@@ -20,6 +20,7 @@ class MeRead(BaseModel):
     user: UserProfile
     tenants: list[TenantSummary]
     current_tenant: TenantSummary | None
+    permissions: list[str]
 
 
 class CurrentTenantUpdate(BaseModel):

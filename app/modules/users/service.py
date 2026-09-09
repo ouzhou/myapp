@@ -1,7 +1,9 @@
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError, BizCode
@@ -48,6 +50,43 @@ def get_or_create_user(
     db.add(user)
     db.flush()
     return user
+
+
+def resolve_idp_user(db: Session, claims: dict[str, Any]) -> User:
+    sub = claims.get("sub")
+    if not isinstance(sub, str) or not sub.strip():
+        raise AppError(BizCode.UNAUTHORIZED, "未认证")
+    email_claim = claims.get("email")
+    email = email_claim if isinstance(email_claim, str) and email_claim else f"{sub}@idp.local"
+    name_claim = claims.get("name")
+    display_name = (
+        name_claim if isinstance(name_claim, str) and name_claim else email.split("@")[0]
+    )
+
+    existing = db.scalars(
+        select(User).where(User.idp_subject == sub, User.deleted_at.is_(None))
+    ).first()
+    if existing is not None:
+        if isinstance(email_claim, str) and email_claim and existing.email != email_claim:
+            existing.email = email_claim
+            db.flush()
+        return existing
+
+    nested = db.begin_nested()
+    try:
+        user = User(email=email, display_name=display_name, idp_subject=sub)
+        db.add(user)
+        db.flush()
+        nested.commit()
+        return user
+    except IntegrityError:
+        nested.rollback()
+        raced = db.scalars(
+            select(User).where(User.idp_subject == sub, User.deleted_at.is_(None))
+        ).first()
+        if raced is None:
+            raise AppError(BizCode.UNAUTHORIZED, "未认证")
+        return raced
 
 
 def _active_membership(
@@ -131,6 +170,7 @@ def _tenant_summaries(db: Session, user_id: UUID) -> list[Tenant]:
                 Membership.user_id == user_id,
                 Membership.status == Membership.STATUS_ACTIVE,
                 Tenant.deleted_at.is_(None),
+                Tenant.status == Tenant.STATUS_ACTIVE,
             )
             .order_by(Membership.created_at.asc(), Membership.id.asc())
         ).all()
@@ -140,18 +180,23 @@ def _tenant_summaries(db: Session, user_id: UUID) -> list[Tenant]:
 def get_me(
     db: Session, user_id: UUID, requested_tenant_id: UUID | None
 ) -> MeRead:
+    from app.modules.iam.service import list_permissions_for_membership
+
     user = require_user(db, user_id)
     tenants = _tenant_summaries(db, user.id)
     current: Tenant | None
+    permissions: list[str] = []
     if requested_tenant_id is not None or tenants:
         membership = resolve_membership(db, user, requested_tenant_id)
         current = db.get(Tenant, membership.tenant_id)
+        permissions = list_permissions_for_membership(db, membership.id)
     else:
         current = None
     return MeRead(
         user=UserProfile.model_validate(user),
         tenants=[TenantSummary.model_validate(row) for row in tenants],
         current_tenant=TenantSummary.model_validate(current) if current else None,
+        permissions=permissions,
     )
 
 

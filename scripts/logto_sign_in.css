@@ -1,0 +1,147 @@
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://cdn.jsdelivr.net/npm/@fontsource-variable/geist@5.2.8/files/geist-latin-wght-normal.woff2")
+    format("woff2-variations");
+}
+
+body.desktop,
+body.mobile,
+#app {
+  --color-brand-default: #171717;
+  --color-brand-hover: #2a2a2a;
+  --color-brand-pressed: #0a0a0a;
+  --color-brand-loading: #404040;
+  --color-type-primary: #171717;
+  --color-type-secondary: #737373;
+  --color-type-link: #171717;
+  --color-bg-body: #fff;
+  --color-bg-body-base: #fff;
+  --color-bg-float: #fff;
+  --color-bg-float-base: #fff;
+  --color-bg-layer-1: #fff;
+  --color-bg-layer-2: #fafafa;
+  --color-line-border: #e5e5e5;
+  --color-line-divider: rgb(23 23 23 / 8%);
+  --color-overlay-brand-focused: rgb(23 23 23 / 16%);
+  --color-overlay-brand-hover: rgb(23 23 23 / 8%);
+  --color-overlay-brand-pressed: rgb(23 23 23 / 12%);
+  --color-shadow-1: none;
+  --color-shadow-2: none;
+  --radius: 8px;
+  font-family: Geist, ui-sans-serif, system-ui, sans-serif;
+  color: #171717;
+  background: #fff;
+}
+
+#app * {
+  font-family: Geist, ui-sans-serif, system-ui, sans-serif;
+}
+
+#app [class*="viewBox"] {
+  background: #fff;
+}
+
+.logto_main-content {
+  min-height: auto !important;
+  padding: 24px !important;
+  border-radius: 14px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  outline: 1px solid rgb(23 23 23 / 10%);
+}
+
+.logto_branding-header {
+  gap: 8px;
+}
+
+.logto_branding-header img {
+  display: none !important;
+}
+
+.logto_branding-header [class*="logoWrapper"] {
+  display: flex !important;
+  justify-content: center;
+}
+
+.logto_branding-header [class*="logoWrapper"]::before {
+  content: "myapp";
+  display: block;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  color: #171717;
+}
+
+.logto_branding-header [class*="headline"] {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: #737373;
+}
+
+#app form [class*="inputField"] > div {
+  border-radius: 8px;
+}
+
+#app form input {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+#app form [class*="countryCodeSelector"] {
+  display: none !important;
+}
+
+#app button[type="submit"] {
+  height: 40px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  background: #171717;
+  color: #fafafa;
+}
+
+#app button[type="submit"]:hover {
+  background: #2a2a2a;
+}
+
+#app button[type="submit"]:focus-visible {
+  outline: 2px solid #171717;
+  outline-offset: 2px;
+}
+
+#app [class*="createAccount"],
+#app [class*="switcher"] {
+  font-size: 13px;
+  color: #737373;
+}
+
+html body [data-logto-signature-container="secured"][data-logto-signature-container="secured"] {
+  width: 0 !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+}
+
+html body [data-logto-signature="secured"][data-logto-signature="secured"] {
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  font-size: 0 !important;
+}
+
+::selection {
+  background: #171717;
+  color: #fafafa;
+}
