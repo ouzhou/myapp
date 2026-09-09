@@ -6,12 +6,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BizCode
+from app.core.permissions import Perm
 from app.modules.iam.models import MembershipRole, Role
 from app.modules.tenants.models import Tenant
 from app.modules.users.models import Membership, User
 from scripts.seed import (
     DEMO_ADMIN_EMAIL,
     DEMO_MEMBER_EMAIL,
+    DEMO_PLATFORM_EMAIL,
     DEMO_TENANT_SLUG,
     seed_demo,
 )
@@ -45,6 +47,28 @@ def test_me_lists_all_tenants_and_falls_back_to_earliest(
     assert body["current_tenant"]["id"] == str(tenant_a)
     assert "idp_subject" not in body["user"]
     assert "password" not in str(body).lower()
+    assert set(body["permissions"]) == {perm.value for perm in Perm}
+
+
+def test_me_permissions_follow_the_current_tenant_role(
+    client: TestClient, db_session: Session
+) -> None:
+    tenant_id = uuid4()
+    headers = auth_headers(db_session, tenant_id=tenant_id)
+    admin_me = client.get("/api/v1/me", headers=headers)
+    assert admin_me.status_code == 200
+    assert set(admin_me.json()["data"]["permissions"]) == {perm.value for perm in Perm}
+
+    reader_id = uuid4()
+    ensure_identity(
+        db_session, user_id=reader_id, tenant_id=tenant_id, role_code="member"
+    )
+    reader_me = client.get(
+        "/api/v1/me",
+        headers={"X-User-Id": str(reader_id), "X-Tenant-Id": str(tenant_id)},
+    )
+    assert reader_me.status_code == 200
+    assert reader_me.json()["data"]["permissions"] == [Perm.PROJECT_READ.value]
 
 
 def test_switch_current_tenant_then_fallback_uses_it(
@@ -102,12 +126,12 @@ def test_seed_is_idempotent(db_session: Session) -> None:
     seed_demo(db_session)
     seed_demo(db_session)
     assert db_session.scalar(select(func.count()).select_from(Tenant)) == 1
-    assert db_session.scalar(select(func.count()).select_from(User)) == 2
+    assert db_session.scalar(select(func.count()).select_from(User)) == 3
     assert db_session.scalar(select(func.count()).select_from(Membership)) == 2
-    assert db_session.scalar(select(func.count()).select_from(Role)) == 3
+    assert db_session.scalar(select(func.count()).select_from(Role)) == 2
     assert db_session.scalar(select(func.count()).select_from(MembershipRole)) == 2
     emails = set(db_session.scalars(select(User.email)))
-    assert emails == {DEMO_ADMIN_EMAIL, DEMO_MEMBER_EMAIL}
+    assert emails == {DEMO_PLATFORM_EMAIL, DEMO_ADMIN_EMAIL, DEMO_MEMBER_EMAIL}
     assert db_session.scalars(select(Tenant.slug)).first() == DEMO_TENANT_SLUG
 
 

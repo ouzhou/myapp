@@ -72,3 +72,9 @@ UserWarning: Valid config keys have changed in V2: 'orm_mode' has been renamed t
 ```
 
 V2 的写法是 `model_config = ConfigDict(...)`。等 pytest 配置建起来后，用 `filterwarnings = ["error"]` 兜住这类——**只写 `error::DeprecationWarning` 会漏掉它**。
+
+---
+
+## Logto OSS 1.x：API resource access token 是 ES384
+
+学习路径写的是 RS256。本机 `svhd/logto:1`（Console 1.43）发给 API resource 的 access token 是 **ES384**（`typ: at+jwt`），JWKS 里对应 EC 公钥。`jwt.decode` 的 `algorithms` 必须是白名单，只写 `RS256` 会把真 token 验成 401。测试仍用自制 RSA 签 RS256，所以白名单是 `RS256` 和 `ES384`，不要按 token header 里的 `alg` 动态选。

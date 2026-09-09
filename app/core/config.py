@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     database_url: str
     # None = 跟 environment 走：只有 local 开 header 假用户。显式 true/false 覆盖默认。
     allow_header_auth: bool | None = None
+    logto_endpoint: str = ""
+    logto_audience: str = ""
 
     @property
     def header_auth_enabled(self) -> bool:

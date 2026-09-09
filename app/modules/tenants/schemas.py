@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -27,4 +28,7 @@ class TenantSummary(BaseModel):
 class TenantCreate(BaseModel):
     slug: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
-    status: str = "active"
+
+
+class TenantStatusUpdate(BaseModel):
+    status: Literal["active", "disabled"]

@@ -31,10 +31,10 @@ def test_unknown_user_header_is_401(client: TestClient) -> None:
 
 
 def test_prod_rejects_header_auth(
-    auth_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(get_settings(), "environment", "prod")
-    response = auth_client.get("/api/v1/projects/")
+    response = client.get("/api/v1/projects/", headers=auth_headers(db_session))
     assert response.status_code == 401
     assert response.json()["code"] == BizCode.UNAUTHORIZED
 

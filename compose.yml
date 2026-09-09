@@ -25,5 +25,37 @@ services:
       postgres:
         condition: service_healthy
 
+  # 演示用，不要当生产。Admin Console :3002，OIDC :3001。
+  # https://docs.logto.io/logto-oss/get-started-with-oss
+  logto-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: logto
+      POSTGRES_PASSWORD: logto
+      POSTGRES_DB: logto
+    volumes:
+      - logto_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logto -d logto"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  logto:
+    image: svhd/logto:1
+    depends_on:
+      logto-postgres:
+        condition: service_healthy
+    entrypoint: ["sh", "-c", "npm run cli db seed -- --swe && npm start"]
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+    environment:
+      TRUST_PROXY_HEADER: "1"
+      DB_URL: postgres://logto:logto@logto-postgres:5432/logto
+      ENDPOINT: http://localhost:3001
+      ADMIN_ENDPOINT: http://localhost:3002
+
 volumes:
   postgres_data:
+  logto_postgres_data:

@@ -28,11 +28,8 @@ from app.modules.users.service import get_or_create_membership, get_or_create_us
 RESOURCE_ROLE = "role"
 RESOURCE_MEMBER = "membership"
 
-SYSTEM_ROLE_SPECS: tuple[tuple[str, str, tuple[Perm, ...]], ...] = (
-    (Role.CODE_OWNER, "拥有者", tuple(Perm)),
-    (Role.CODE_ADMIN, "管理员", tuple(Perm)),
-    (Role.CODE_MEMBER, "成员", (Perm.PROJECT_READ,)),
-)
+SYSTEM_ROLE_CODE = Role.CODE_TENANT_ADMIN
+SYSTEM_ROLE_NAME = "租户管理员"
 
 
 class IamCode(IntEnum):
@@ -41,9 +38,9 @@ class IamCode(IntEnum):
     ROLE_NOT_FOUND = 40402
     MEMBER_NOT_FOUND = 40403
     ROLE_CODE_CONFLICT = 40902
-    LAST_OWNER = 40903
+    LAST_TENANT_ADMIN = 40903
     SYSTEM_ROLE_PROTECTED = 40904
-    OWNER_PERMS_LOCKED = 40905
+    SYSTEM_PERMS_LOCKED = 40905
     MEMBER_CONFLICT = 40906
 
 
@@ -59,7 +56,27 @@ register_constraint_error(
 )
 
 
+def _all_permission_codes() -> list[str]:
+    return sorted(perm.value for perm in Perm)
+
+
+def _effective_permissions(db: Session, role: Role) -> list[str]:
+    if role.is_system:
+        return _all_permission_codes()
+    return sorted(_permissions_of(db, role.id))
+
+
 def list_permissions_for_membership(db: Session, membership_id: UUID) -> list[str]:
+    has_system = db.scalars(
+        select(Role.id)
+        .join(MembershipRole, MembershipRole.role_id == Role.id)
+        .where(
+            MembershipRole.membership_id == membership_id,
+            Role.is_system.is_(True),
+        )
+    ).first()
+    if has_system is not None:
+        return _all_permission_codes()
     rows = db.scalars(
         select(RolePermission.permission)
         .join(MembershipRole, MembershipRole.role_id == RolePermission.role_id)
@@ -70,21 +87,44 @@ def list_permissions_for_membership(db: Session, membership_id: UUID) -> list[st
 
 
 def ensure_system_roles(db: Session, tenant_id: UUID) -> None:
-    existing = {
-        role.code: role
-        for role in db.scalars(
-            select(Role).where(Role.tenant_id == tenant_id, Role.is_system.is_(True))
-        ).all()
-    }
-    for code, name, perms in SYSTEM_ROLE_SPECS:
-        if code in existing:
-            continue
-        role = Role(tenant_id=tenant_id, code=code, name=name, is_system=True)
-        db.add(role)
-        db.flush()
-        for perm in perms:
-            db.add(RolePermission(role_id=role.id, permission=perm.value))
-        db.flush()
+    existing = db.scalars(
+        select(Role).where(
+            Role.tenant_id == tenant_id,
+            Role.is_system.is_(True),
+            Role.code == SYSTEM_ROLE_CODE,
+        )
+    ).first()
+    if existing is not None:
+        return
+    db.add(
+        Role(
+            tenant_id=tenant_id,
+            code=SYSTEM_ROLE_CODE,
+            name=SYSTEM_ROLE_NAME,
+            is_system=True,
+        )
+    )
+    db.flush()
+
+
+def ensure_custom_role(
+    db: Session,
+    tenant_id: UUID,
+    *,
+    code: str,
+    name: str,
+    permissions: Sequence[Perm],
+) -> Role:
+    role = db.scalars(
+        select(Role).where(Role.tenant_id == tenant_id, Role.code == code)
+    ).first()
+    if role is not None:
+        return role
+    role = Role(tenant_id=tenant_id, code=code, name=name, is_system=False)
+    db.add(role)
+    db.flush()
+    _replace_role_permissions(db, role, permissions)
+    return role
 
 
 def ensure_membership_role_by_code(
@@ -132,7 +172,7 @@ def _role_read(db: Session, role: Role) -> RoleRead:
         code=role.code,
         name=role.name,
         is_system=role.is_system,
-        permissions=sorted(_permissions_of(db, role.id)),
+        permissions=_effective_permissions(db, role),
         created_at=role.created_at,
         updated_at=role.updated_at,
     )
@@ -143,7 +183,7 @@ def _role_snapshot(db: Session, role: Role) -> dict[str, Any]:
         "code": role.code,
         "name": role.name,
         "is_system": role.is_system,
-        "permissions": sorted(_permissions_of(db, role.id)),
+        "permissions": _effective_permissions(db, role),
     }
 
 
@@ -225,11 +265,11 @@ def update_role(
     db: Session, user: CurrentUser, role_id: UUID, payload: RoleUpdate
 ) -> RoleRead:
     role = _get_role(db, user, role_id)
+    if role.is_system:
+        raise AppError(IamCode.SYSTEM_ROLE_PROTECTED, "系统角色不能修改")
     before = _role_snapshot(db, role)
     changes = payload.model_dump(exclude_unset=True)
     if "code" in changes and changes["code"] != role.code:
-        if role.is_system:
-            raise AppError(IamCode.SYSTEM_ROLE_PROTECTED, "系统角色不能改编码")
         _require_unique_code(db, user.tenant_id, changes["code"], exclude_id=role.id)
     for field, value in changes.items():
         setattr(role, field, value)
@@ -270,8 +310,8 @@ def replace_role_permissions(
     permissions: Sequence[Perm],
 ) -> RoleRead:
     role = _get_role(db, user, role_id)
-    if role.is_system and role.code == Role.CODE_OWNER:
-        raise AppError(IamCode.OWNER_PERMS_LOCKED, "拥有者角色的权限不能修改")
+    if role.is_system:
+        raise AppError(IamCode.SYSTEM_PERMS_LOCKED, "系统角色的权限不能修改")
     before = _role_snapshot(db, role)
     _replace_role_permissions(db, role, permissions)
     record_audit(
@@ -299,9 +339,9 @@ def _get_membership(db: Session, user: CurrentUser, membership_id: UUID) -> Memb
     return membership
 
 
-def _owner_count(db: Session, tenant_id: UUID) -> int:
+def _tenant_admin_count(db: Session, tenant_id: UUID) -> int:
     return db.scalar(
-        select(func.count())
+        select(func.count(func.distinct(MembershipRole.membership_id)))
         .select_from(MembershipRole)
         .join(Role, Role.id == MembershipRole.role_id)
         .join(Membership, Membership.id == MembershipRole.membership_id)
@@ -309,12 +349,12 @@ def _owner_count(db: Session, tenant_id: UUID) -> int:
             Membership.tenant_id == tenant_id,
             Membership.status == Membership.STATUS_ACTIVE,
             Role.tenant_id == tenant_id,
-            Role.code == Role.CODE_OWNER,
+            Role.is_system.is_(True),
         )
     ) or 0
 
 
-def _has_owner_role(db: Session, membership_id: UUID, tenant_id: UUID) -> bool:
+def _has_system_role(db: Session, membership_id: UUID, tenant_id: UUID) -> bool:
     return (
         db.scalars(
             select(MembershipRole.role_id)
@@ -322,22 +362,22 @@ def _has_owner_role(db: Session, membership_id: UUID, tenant_id: UUID) -> bool:
             .where(
                 MembershipRole.membership_id == membership_id,
                 Role.tenant_id == tenant_id,
-                Role.code == Role.CODE_OWNER,
+                Role.is_system.is_(True),
             )
         ).first()
         is not None
     )
 
 
-def _reject_last_owner(
-    db: Session, membership: Membership, *, keeping_owner: bool
+def _reject_last_tenant_admin(
+    db: Session, membership: Membership, *, keeping_system: bool
 ) -> None:
-    if keeping_owner or not _has_owner_role(
+    if keeping_system or not _has_system_role(
         db, membership.id, membership.tenant_id
     ):
         return
-    if _owner_count(db, membership.tenant_id) <= 1:
-        raise AppError(IamCode.LAST_OWNER, "不能撤销租户里最后一个拥有者")
+    if _tenant_admin_count(db, membership.tenant_id) <= 1:
+        raise AppError(IamCode.LAST_TENANT_ADMIN, "不能撤销租户里最后一个租户管理员")
 
 
 def _roles_in_tenant(
@@ -360,8 +400,8 @@ def _roles_in_tenant(
 def _replace_membership_roles(
     db: Session, membership: Membership, roles: Sequence[Role]
 ) -> None:
-    keeping_owner = any(role.code == Role.CODE_OWNER for role in roles)
-    _reject_last_owner(db, membership, keeping_owner=keeping_owner)
+    keeping_system = any(role.is_system for role in roles)
+    _reject_last_tenant_admin(db, membership, keeping_system=keeping_system)
     db.execute(
         delete(MembershipRole).where(
             MembershipRole.membership_id == membership.id
@@ -478,7 +518,7 @@ def create_member(
 
 def delete_member(db: Session, user: CurrentUser, membership_id: UUID) -> None:
     membership = _get_membership(db, user, membership_id)
-    _reject_last_owner(db, membership, keeping_owner=False)
+    _reject_last_tenant_admin(db, membership, keeping_system=False)
     before = _member_snapshot(db, membership)
     db.execute(
         delete(MembershipRole).where(MembershipRole.membership_id == membership.id)

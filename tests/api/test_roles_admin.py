@@ -32,18 +32,19 @@ def test_system_roles_are_seeded_and_protected(
     listed = client.get("/api/v1/roles", headers=headers)
     assert listed.status_code == 200
     codes = {row["code"] for row in listed.json()["data"]["items"]}
-    assert codes == {"owner", "admin", "member"}
-    owner = next(
-        row for row in listed.json()["data"]["items"] if row["code"] == "owner"
+    assert codes == {"tenant_admin"}
+    admin = next(
+        row for row in listed.json()["data"]["items"] if row["code"] == "tenant_admin"
     )
-    assert set(owner["permissions"]) == {perm.value for perm in Perm}
+    assert admin["is_system"] is True
+    assert set(admin["permissions"]) == {perm.value for perm in Perm}
 
-    deleted = client.delete(f"/api/v1/roles/{owner['id']}", headers=headers)
+    deleted = client.delete(f"/api/v1/roles/{admin['id']}", headers=headers)
     assert deleted.status_code == 409
     assert deleted.json()["code"] == IamCode.SYSTEM_ROLE_PROTECTED
 
     renamed = client.patch(
-        f"/api/v1/roles/{owner['id']}",
+        f"/api/v1/roles/{admin['id']}",
         json={"code": "root"},
         headers=headers,
     )
@@ -51,12 +52,12 @@ def test_system_roles_are_seeded_and_protected(
     assert renamed.json()["code"] == IamCode.SYSTEM_ROLE_PROTECTED
 
     locked = client.put(
-        f"/api/v1/roles/{owner['id']}/permissions",
+        f"/api/v1/roles/{admin['id']}/permissions",
         json={"permissions": [Perm.PROJECT_READ.value]},
         headers=headers,
     )
     assert locked.status_code == 409
-    assert locked.json()["code"] == IamCode.OWNER_PERMS_LOCKED
+    assert locked.json()["code"] == IamCode.SYSTEM_PERMS_LOCKED
 
 
 def test_custom_role_crud(auth_client: TestClient) -> None:
@@ -98,7 +99,7 @@ def test_foreign_role_cannot_be_granted_to_member(
         db_session, tenant_id=tenant_a, role_code="member"
     )
     auth_headers(db_session, tenant_id=tenant_b)
-    foreign_role = _role(db_session, tenant_b, Role.CODE_ADMIN)
+    foreign_role = _role(db_session, tenant_b, Role.CODE_TENANT_ADMIN)
 
     response = client.put(
         f"/api/v1/members/{membership_id}/roles",
@@ -113,7 +114,7 @@ def test_foreign_role_cannot_be_granted_to_member(
 def test_composite_fk_blocks_cross_tenant_grant(db_session: Session) -> None:
     _uid_a, tenant_a, membership_a = ensure_identity(db_session)
     _uid_b, tenant_b, _membership_b = ensure_identity(db_session)
-    role_b = _role(db_session, tenant_b, Role.CODE_ADMIN)
+    role_b = _role(db_session, tenant_b, Role.CODE_TENANT_ADMIN)
     nested = db_session.begin_nested()
     try:
         db_session.add(
